@@ -10,14 +10,21 @@ This script defines the overall exercise for ATIAM structure course
 @author: esling
 """
 
+# %%
 # Define mode (keep it on False, this is just for my generative part)
-DEV_MODE=False
-# Basic set of imports (here you can see if everything passes)
-import os
-import pickle
+from typing import Any, Callable
+from music21 import converter
+import numpy as np
+import math
+from needleman import needleman_affine
+from needleman import needleman_simple
 import string
+import pickle
+import os
+DEV_MODE = False
+# Basic set of imports (here you can see if everything passes)
 
-#%% Here collect the whole set of tracks
+# %% Here collect the whole set of tracks
 if DEV_MODE:
     # Define MIDI extension
     midExt = ['mid', 'midi', 'MID', 'MIDI']
@@ -51,16 +58,17 @@ if DEV_MODE:
                         else:
                             composers_tracks[comp] = [item]
     print('Found ' + str(len(tracks)) + ' tracks.')
-    midi_database = {'composers':composers, 'composers_tracks':composers_tracks}
+    midi_database = {'composers': composers,
+                     'composers_tracks': composers_tracks}
     pickle.dump(midi_database, open("atiam-fpa.pkl", "wb"))
 else:
     midi_database = pickle.load(open("atiam-fpa.pkl", "rb"))
     composers = midi_database['composers']
     composers_tracks = midi_database['composers_tracks']
 
-#%% 
+# %%
 """
- 
+
 PART 1 - Exploring a track collections (text dictionnaries) and playing with MIDI
 
 In this part, we will start easy by looking at a collection of tracks.
@@ -68,7 +76,7 @@ The set of classical music pieces is provided in the _atiam-fpa.pkl_ file, which
 is already loaded at this point of the script and contain two structures
     - composers         = Array of all composers in the database
     - composers_tracks  = Hashtable of tracks for a given composer
-    
+
 Some examples of the content of these structures
 # Names of composers
 composers[23] => 'Abela, Placido'
@@ -76,13 +84,13 @@ composers[1210]  => 'Beethoven, Ludwig van'
 # List of tracks for each composer
 composers_tracks['Abela, Placido'] => ['Ave Maria(Meditation on Prelude No. 1 by J.S.Bach)']
 composers_tracks['Beethoven, Ludwig van'] => ['Drinking Song', 'Sonatine No. 3 for Mandolin and Piano', ...]
-# Retrieve the first track of 
+# Retrieve the first track of
 composers_tracks['Beethoven, Ludwig van'][0] => 'Drinking Song'
 
 """
 
 # Here an example: print all composers with more than 10 tracks
-for composer,tracks in sorted(composers_tracks.items()):
+for composer, tracks in sorted(composers_tracks.items()):
     if (len(tracks) >= 10):
         print(composer + ' : ' + str(len(tracks)) + ' tracks.')
 
@@ -93,25 +101,88 @@ Q-1.1 Re-implement one of the array sorting algorithm seen in class
         (+1 point bonus for quicksort)
 
 '''
-def my_sort(array):
-    sorted_array = []
-    ################
-    # YOUR CODE HERE
-    ################
-    return sorted_array
-   
+
+
+def quick_sort(arr: np.ndarray, pred: Callable[[Any, Any], int] = None, axis: int = 0, pivot_idx: int = 0) -> None:
+    """[summary]
+    In-place sorting of input 1D-array, according to input predicate.
+    Args:
+        array (np.ndarray): input 1D-array to be sorted.
+        pred (Callable[[float, float], int]): [description]
+        axis (int, optional): [description]. Defaults to 0.
+    """
+    if pred is None:
+        def pred(a, b): return a > b
+
+    def swap_el(a: np.ndarray, i: int, j: int) -> None:
+        def _swap(_a):
+            # see: https://stackoverflow.com/a/47951813
+            a[[i, j]] = a[[j, i]]
+        return _swap
+
+    def quicksort_rec(arr, start_idx, stop_idx, pivot_idx):
+        if stop_idx-start_idx <= 1:
+            # nothing to do
+            return
+        # if pivot is not the starting element, swap 'em
+        np.apply_along_axis(swap_el(start_idx, pivot_idx), axis=axis, arr=arr)
+        # Using pivot to partition the array
+        n = arr.shape[axis]
+        left_idx, right_idx = start_idx+1, stop_idx-1
+        # Also get the indices for the right axis in input arr
+        # We'll need to iterate through this axis.
+        arr_ids = np.take(arr, np.arange(n), axis=axis)
+        it = 0
+        while it < n or left_idx >= right_idx:
+            while pred(arr[arr_ids[pivot_idx]], arr[arr_ids[left_idx]]):
+                left_idx += 1
+            while pred(arr[arr_ids[right_idx]], arr[arr_ids[pivot_idx]]):
+                right_idx += 1
+            # swap the two
+            np.apply_along_axis(
+                swap_el(left_idx, right_idx), axis=axis, arr=arr)
+            it += 1
+        # Finally, swap right with pivot
+        np.apply_along_axis(swap_el(pivot_idx, right_idx), axis=axis, arr=arr)
+        # Recrusive step
+        quicksort_rec(arr, pivot_idx+1, stop_idx, pivot_idx+1)
+        quicksort_rec(arr, start_idx, pivot_idx-1, start_idx)
+        return
+    quicksort_rec(arr, 0, arr.shape[axis], pivot_idx)
+
+
+def quick_sorted(arr: np.ndarray, pred: Callable[[float, float], int] = None, axis: int = 0) -> np.ndarray:
+    """[summary]
+    Out-of-place sorting of input 1D-array, according to input predicate.
+    Args:
+        array (np.ndarray): input 1D-array to sort.
+        pred (Callable[[float, float], int]): [description]
+        axis (int, optional): [description]. Defaults to 0.
+    Returns:
+        np.ndarray: output sorted 1D-array.
+    """
+    arr_sorted = np.copy(arr)
+    quick_sort(arr_sorted)
+    return arr_sorted
+
+
 '''
 
 Q-1.2 Use your own algorithm to sort the collection of composers by decreasing number of tracks
 
 '''
+rng = np.random.default_rng()
+arr = rng.integers(0, 20, size=(20,))
+arr_sorted = quick_sorted(arr)
+print(arr)
+print(arr_sorted)
 ################
 # YOUR CODE HERE
 ################
 
 '''
 
-Q-1.3 Extend your sorting procedure, to sort all tracks from all composers alphabetically 
+Q-1.3 Extend your sorting procedure, to sort all tracks from all composers alphabetically
 
 '''
 ################
@@ -124,7 +195,7 @@ MIDI part - In addition to the pickle file, you can find some example MIDI
 files in the atiam-fpa/ folder.
 
 Here we are going to import and plot the different MIDI files. We recommend
-to use the pretty_midi library 
+to use the pretty_midi library
 pip install pretty_midi
 But you can rely on any method (even code your own if you want)
 
@@ -142,7 +213,7 @@ to import, plot and compare different files
 ################
 # YOUR CODE HERE
 ################
-    
+
 '''
 
 Q-1.5 Compute the number of notes in a MIDI and sort the collection
@@ -155,22 +226,22 @@ file. Then, sort the set of MIDI files based on the number of notes.
 # YOUR CODE HERE
 ################
 
-#%% 
+# %%
 """
- 
+
 PART 2 - Symbolic alignments and simple text dictionnaries
 
-In this part, we will use our knowledge on computer structures to solve a very 
+In this part, we will use our knowledge on computer structures to solve a very
 well-known problem of string alignement. Hence, this part is split between
-  1 - Implement a string alignment 
+  1 - Implement a string alignment
   2 - Try to apply this to a collection of classical music pieces names
   3 - Develop your own more adapted procedure to have a matching inside large set
-  
+
 The set of classical music pieces is provided in the atiam-fpa.pkl file, which
 is already loaded at this point of the script and contain two structures
     - composers         = Array of all composers in the database
     - composers_tracks  = Hashtable of tracks for a given composer
-    
+
 Some examples of the content of these structures
 
 composers[23] => 'Abela, Placido'
@@ -182,8 +253,8 @@ composers_tracks['Beethoven, Ludwig van'] => ['"Ode to Joy"  (Arrang.)', '10 Nat
 composers_tracks['Beethoven, Ludwig van'][0] => '"Ode to Joy"  (Arrang.)'
 
 """
-    
-#%% Question 1 - Reimplementing the simple NW alignment 
+
+# %% Question 1 - Reimplementing the simple NW alignment
 
 '''
 
@@ -194,6 +265,8 @@ Q-2.1 Here perform your Needleman-Wunsch (NW) implementation.
     - Remember to rely on a user-defined matrix for symbols distance
 
 '''
+
+
 def my_needleman_simple(str1, str2, matrix='atiam-fpa_alpha.dist', gap_open=-5, gap_extend=-5):
     score = 0
     ################
@@ -201,15 +274,16 @@ def my_needleman_simple(str1, str2, matrix='atiam-fpa_alpha.dist', gap_open=-5, 
     ################
     return ('', '', score)
 
+
 # Reference code for testing
-from needleman import needleman_simple
-aligned = needleman_simple("CEELECANTH", "PELICAN", matrix='atiam-fpa_alpha.dist', gap=-2)
+aligned = needleman_simple("CEELECANTH", "PELICAN",
+                           matrix='atiam-fpa_alpha.dist', gap=-2)
 print('Results for basic gap costs (linear)')
 print(aligned[0])
 print(aligned[1])
 print('Score : ' + str(aligned[2]))
 
-#%% Question 2 - Applying this to a collection of musical scores
+# %% Question 2 - Applying this to a collection of musical scores
 
 ################
 # YOUR CODE HERE
@@ -221,7 +295,7 @@ Q-2.2 Apply the NW algorithm between all tracks of each composer
     * For each track of a composer, compare to all remaining tracks of the same composer
     * Establish a cut criterion (what is the relevant similarity level ?) to only print relevant matches
     * Propose a set of matching tracks and save it through Pickle
-    
+
 '''
 
 ################
@@ -236,26 +310,26 @@ Q-2.3 Extend your previous code so that it can compare
     * Propose a method to avoid such a huge amount of computation
     * Establish a cut criterion (what is relevant similarity)
     * Propose a set of matching tracks and save it through Pickle
-    
+
 '''
 
 ################
 # YOUR CODE HERE
 ################
 
-#%% 
+# %%
 """
- 
+
 PART 3 - Extending the alignment algorithm and musical matching
 
 You might have seen from the previous results that
         - Purely string matching on classical music names is not the best approach
         - This mostly comes from the fact that the importance of symbols is not the same
-        - For instance 
+        - For instance
             "Symphony for orchestra in D minor"
             "Symphony for orchestra in E minor"
           Looks extremely close but the key is the most important symbol
-  
+
 Another flaw in our approach is that the NW algorithm treats all gaps
 equivalently. Hence, it can put lots of small gaps everywhere.
 Regarding alignement, it would be better to have long coherent gaps rather
@@ -276,7 +350,7 @@ Q-3.1 Extending to a true musical name matching
         (These are only given as indicative ideas ...)
     * Implement this new comparison procedure adapted to classical music piece names
     * Re-run your previous results (Q-2.2 and Q-2.3) with this procedure
-    
+
 '''
 
 ################
@@ -301,91 +375,92 @@ if DEV_MODE:
                 dist.write('-3  ')
         dist.write('\n')
     dist.close()
-    
-    
+
+
 '''
 
-Q-3.2 Extending the NW algorithm 
+Q-3.2 Extending the NW algorithm
     * Add the affine gap penalty to your original NW algorithm
     * You can use the Gotoh algorithm reference
     * Verify your code by using the provided compiled version
-    
+
 '''
 
 ################
 # YOUR CODE HERE
 ################
 
-from needleman import needleman_affine
-aligned = needleman_affine("CEELECANTH", "PELICAN", matrix='atiam-fpa_alpha.dist', gap_open=-5, gap_extend=-2)
+aligned = needleman_affine(
+    "CEELECANTH", "PELICAN", matrix='atiam-fpa_alpha.dist', gap_open=-5, gap_extend=-2)
 print('Results for affine gap costs')
 print(aligned[0])
 print(aligned[1])
 print('Score : ' + str(aligned[2]))
 
 
-#%% 
+# %%
 """
- 
+
 PART 4 - Alignments between MIDI files and error-detection
 
-Interestingly the problem of string alignment can be extended to the more global 
+Interestingly the problem of string alignment can be extended to the more global
 problem of aligning any series of symbolic information (vectors). Therefore,
 we can see that the natural extension of this problem is to align any sequence
 of symbolic information.
 
-This definition matches very neatly to the alignement of two musical scores 
+This definition matches very neatly to the alignement of two musical scores
 that can then be used as symbolic similarity between music, or score following.
-However, this requires several key enhancements to the previous approach. 
-Furthermore, MIDI files gathered on the web are usually of poor quality and 
+However, this requires several key enhancements to the previous approach.
+Furthermore, MIDI files gathered on the web are usually of poor quality and
 require to be checked. Hence, here you will
     1 - Learn how to read and watch MIDI files
     2 - Explore their properties to perform some quality checking
     3 - Extend alignment to symbolic score alignement
-    
-To fasten the pace of your musical analysis, we will rely on the excellent 
-Music21 library, which provides all sorts of musicological analysis and 
+
+To fasten the pace of your musical analysis, we will rely on the excellent
+Music21 library, which provides all sorts of musicological analysis and
 properties over symbolic scores. You will need to really perform this part
 to go and read the documentation of this library online
 
 """
 
-#%% Question 4 - Importing and plotting MIDI files (using Music21)
+# %% Question 4 - Importing and plotting MIDI files (using Music21)
 
-import math
-import numpy as np
-from music21 import converter
 
-def get_start_time(el,measure_offset,quantization):
+def get_start_time(el, measure_offset, quantization):
     if (el.offset is not None) and (el.measureNumber in measure_offset):
         return int(math.ceil(((measure_offset[el.measureNumber] or 0) + el.offset)*quantization))
     # Else, no time defined for this element and the functino return None
 
-def get_end_time(el,measure_offset,quantization):
+
+def get_end_time(el, measure_offset, quantization):
     if (el.offset is not None) and (el.measureNumber in measure_offset):
         return int(math.ceil(((measure_offset[el.measureNumber] or 0) + el.offset + el.duration.quarterLength)*quantization))
     # Else, no time defined for this element and the functino return None
-    
-def get_pianoroll_part(part,quantization):
+
+
+def get_pianoroll_part(part, quantization):
     # Get the measure offsets
-    measure_offset = {None:0}
+    measure_offset = {None: 0}
     for el in part.recurse(classFilter=('Measure')):
         measure_offset[el.measureNumber] = el.offset
     # Get the duration of the part
     duration_max = 0
-    for el in part.recurse(classFilter=('Note','Rest')):
-        t_end = get_end_time(el,measure_offset,quantization)
-        if(t_end>duration_max):
-            duration_max=t_end
+    for el in part.recurse(classFilter=('Note', 'Rest')):
+        t_end = get_end_time(el, measure_offset, quantization)
+        if(t_end > duration_max):
+            duration_max = t_end
     # Get the pitch and offset+duration
-    piano_roll_part = np.zeros((128,math.ceil(duration_max)))
+    piano_roll_part = np.zeros((128, math.ceil(duration_max)))
     for this_note in part.recurse(classFilter=('Note')):
-        note_start = get_start_time(this_note,measure_offset,quantization)
-        note_end = get_end_time(this_note,measure_offset,quantization)
-        piano_roll_part[this_note.midi,note_start:note_end] = 1
+        note_start = get_start_time(this_note, measure_offset, quantization)
+        note_end = get_end_time(this_note, measure_offset, quantization)
+        piano_roll_part[this_note.midi, note_start:note_end] = 1
     return piano_roll_part
 
 # Here we provide a MIDI import function
+
+
 def importMIDI(f):
     piece = converter.parse(f)
     all_parts = {}
@@ -395,18 +470,16 @@ def importMIDI(f):
             track_name = part[0].bestName()
         except AttributeError:
             track_name = 'None'
-        cur_part = get_pianoroll_part(part, 16);
+        cur_part = get_pianoroll_part(part, 16)
         if (cur_part.shape[1] > 0):
-            all_parts[track_name] = cur_part;
+            all_parts[track_name] = cur_part
     print('Returning')
     return piece, all_parts
-
 
 
 ################
 # YOUR CODE HERE
 ################
-
 '''
 
 Q-4.1 Exploring MIDI properties
@@ -467,12 +540,15 @@ that the "distance matrix" previously used could simply be replaced by a
 # YOUR CODE HERE
 ################
 
-#%% Just for preparing a random set of MIDIs to help you out
+# %% Just for preparing a random set of MIDIs to help you out
 if DEV_MODE:
-    nb_track = 0;
+    nb_track = 0
     for val in np.random.randint(0, len(composers_tracks['Beethoven, Ludwig van']), 30):
         cur_track = composers_tracks['Beethoven, Ludwig van'][val]
-        track_path = root + '/Beethoven, Ludwig van/' + cur_track + '/' + cur_track + '.mid'
-        os.system('cp ' + track_path + ' atiam-fpa/beethoven_' + str(nb_track) + '.mid')
-        print('cp "' + track_path + '" atiam-fpa/beethoven_' + str(nb_track) + '.mid')
+        track_path = root + '/Beethoven, Ludwig van/' + \
+            cur_track + '/' + cur_track + '.mid'
+        os.system('cp ' + track_path + ' atiam-fpa/beethoven_' +
+                  str(nb_track) + '.mid')
+        print('cp "' + track_path + '" atiam-fpa/beethoven_' +
+              str(nb_track) + '.mid')
         nb_track = nb_track + 1
