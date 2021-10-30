@@ -1,5 +1,6 @@
 {
   "python.pythonPath": "/home/xabbu/anaconda3/envs/env_info/bin/python",
   "python.linting.pycodestyleEnabled": true,
-  "python.linting.enabled": true
+  "python.linting.enabled": true,
+  "jupyter.jupyterServerType": "local"
 }
