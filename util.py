@@ -18,7 +18,7 @@ def swap_el(a: np.ndarray, i: int, j: int) -> None:
     a[[i, j]] = a[[j, i]]
 
 
-def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, key: Callable[[Any], float], use_threads: bool = False) -> None:
+def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, comp: Callable[[Any, Any], int], use_threads: bool = False) -> None:
     """Recursive step
     Args:
         a (np.ndarray): The (n-1-axis)D-sub-array of input array to be sorted.
@@ -43,7 +43,7 @@ def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, key: Ca
         if sub_arr_len <= 1:
             # nothing to do
             return -1
-        elif sub_arr_len == 2 and key(a[start_idx]) > key(a[stop_idx]):
+        elif sub_arr_len == 2 and comp(a[start_idx], a[stop_idx]) > 0:
             swap_el(a, start_idx, stop_idx)
             return -1
         # if pivot is not the starting element, swap em
@@ -56,9 +56,9 @@ def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, key: Ca
         left_idx, right_idx = sort_start_idx, stop_idx
         # for it in range(sort_start_idx, stop_idx+1):
         while left_idx <= right_idx:
-            while left_idx <= right_idx and key(a[left_idx]) <= key(a[pivot_idx]):
+            while left_idx <= right_idx and comp(a[left_idx], a[pivot_idx]) <= 0:
                 left_idx += 1
-            while right_idx >= left_idx and key(a[right_idx]) >= key(a[pivot_idx]):
+            while right_idx >= left_idx and comp(a[right_idx], a[pivot_idx]) >= 0:
                 right_idx -= 1
             if left_idx < right_idx:
                 # swap the two
@@ -92,17 +92,12 @@ def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, key: Ca
     q.join()
 
 
-def pip_sort_list(seq: List, key: Callable[[Any], float], axis: int, way: Union['default', 'above', 'below'], kind: Union['quick'], use_threads: bool) -> None:
-    """n-place quick-sorting of input nD-array, according to input comparison function.
+def pip_sort_list(seq: List, axis: int, order: Union[str, List[str]], way: Union['default', 'above', 'below'], kind: Union['quick'], use_threads: bool) -> None:
+    """In-place quick-sorting of input nD-array along axis.
     Args:
-        array (np.ndarray): input nD-array to be sorted. 
-        key (Callable[[Any], float]): 
-            If way is 'scalar, should sort two scalars,
-            If way is 'below', should sort two (n-1-axis)D-sub-arrays of input array,
-            If way is 'above', should sort two (axis)D-sub-arrays of input array.
-            Defaults to increasing order.
+        array (np.ndarray): input nD-array to be sorted.
         axis (int, optional): Defaults to -1 for last axis.
-        way (Union[, optional): 
+        way (Union[, optional):
             If 'default', will sort recursively as numpy does,
             If 'below', will sort the (n-1-axis)D-sub-arrays.
             If 'above', will sort the (axis)D-sub-arrays.
@@ -112,17 +107,12 @@ def pip_sort_list(seq: List, key: Callable[[Any], float], axis: int, way: Union[
     raise NotImplementedError()
 
 
-def pip_sort_array(arr: np.ndarray, key: Callable[[Any], float], axis: int, way: Union['default', 'above', 'below'], kind: Union['quicksort'], use_threads: bool) -> None:
-    """n-place quick-sorting of input nD-array, according to input comparison function.
+def pip_sort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], way: Union['default', 'above', 'below'], kind: Union['quicksort'], use_threads: bool) -> None:
+    """In-place quick-sorting of input nD-array along axis.
     Args:
-        array (np.ndarray): input nD-array to be sorted. 
-        key (Callable[[Any], float]): 
-            If way is 'scalar, should sort two scalars,
-            If way is 'below', should sort two (n-1-axis)D-sub-arrays of input array,
-            If way is 'above', should sort two (axis)D-sub-arrays of input array.
-            Defaults to increasing order.
+        array (np.ndarray): input nD-array to be sorted.
         axis (int, optional): Defaults to -1 for last axis.
-        way (Union[, optional): 
+        way (Union[, optional):
             If 'default', will sort recursively as numpy does,
             If 'below', will sort the (n-1-axis)D-sub-arrays.
             If 'above', will sort the (axis)D-sub-arrays.
@@ -133,28 +123,24 @@ def pip_sort_array(arr: np.ndarray, key: Callable[[Any], float], axis: int, way:
     Nk = np.shape(arr)[axis+1:]
     if way == 'default':
         np.apply_along_axis(lambda _a: quicksort(_a, 0, np.shape(
-            _a)[0]-1, key=key, use_threads=use_threads), axis=axis, arr=arr)
+            _a)[0]-1, comp=comp, use_threads=use_threads), axis=axis, arr=arr)
     elif way == 'below':
         for ii in np.ndindex(Ni):
             quicksort(arr[ii + np.s_[:, ]], 0, np.shape(arr)[axis]-1,
-                      key=key, use_threads=use_threads)
+                      comp=comp, use_threads=use_threads)
     elif way == 'above':
         for kk in np.ndindex(Nk):
             quicksort(arr[np.s_[:, ] + kk], 0, np.shape(arr)
-                      [axis]-1, key=key, use_threads=use_threads)
+                      [axis]-1, comp=comp, use_threads=use_threads)
     else:
         raise AttributeError(f"Way not recognised: {way}")
 
 
-def pip_sort(a: Union[np.ndarray, List], key: Callable[[Any], float] = None, axis: int = -1, way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> None:
-    """n-place quick-sorting of input nD-array, according to input key function.
+def pip_sort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str, List[str], Callable[[Any, Any], int]] = None,  way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> None:
+    """In-place quick-sorting of input nD-array, according to input comparison function.
     Args:
         array (np.ndarray): input nD-array to be sorted.
-        key (Callable[[Any], float]):
-            If way is 'scalar, should key a scalar,
-            If way is 'below', should key a (n-1-axis)D-sub-arrays of input array,
-            If way is 'above', should key a (axis)D-sub-arrays of input array.
-            Defaults to increasing order.
+        order (Union[str, List[str]]: see numpy doc.
         axis (int, optional): Defaults to -1 for last axis.
         way (Union[, optional):
             If 'default', will sort recursively as numpy does,
@@ -163,23 +149,40 @@ def pip_sort(a: Union[np.ndarray, List], key: Callable[[Any], float] = None, axi
             Defaults to 'default'.
         use_threads(bool): Defaults to False.
     """
-    # set default key: increasing order
-    if key is None:
-        def key(a): return a
+    # set comp: increasing order
+
+    def comp(a, b) -> int:
+        if callable(order):
+            return order(a, b)
+        elif order is not None:
+            def comp_rec(a, b, i: int) -> int:
+                comp = a[order[i]] - b[order[i]]
+                if comp > 0:
+                    return 1
+                elif comp < 0:
+                    return -1
+                elif order >= len(order)-1:
+                    return 0
+                else:
+                    return comp_rec(a, b, i+1)
+            return comp_rec(a, b, 0)
+        else:
+            return a - b
+
     if axis == None:
         raise AttributeError(
             "Use out-of-place version for sorting flattened version of the array")
     if isinstance(a, np.ndarray):
-        pip_sort_array(a, key=key, axis=axis,
+        pip_sort_array(a, axis=axis, comp=comp,
                        way=way, kind=kind, use_threads=use_threads)
     elif isinstance(a, list):
-        pip_sort_list(a, key=key, axis=axis,
+        pip_sort_list(a, axis=axis, comp=comp,
                       way=way, kind=kind, use_threads=use_threads)
     else:
         raise AttributeError(f"Type not recognised: {type(a)}")
 
 
-def pip_sorted(a: Union[np.ndarray, List], key: Callable[[Any], float] = None, axis: Union[int, None] = -1, way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> np.ndarray:
+def pip_sorted(a: Union[np.ndarray, List], axis: Union[int, None] = -1, order: Union[None, str, List[str], Callable[[Any, Any], int]] = None, way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> np.ndarray:
     """Out-of-place quick-sorting of nD-array, according to input predicate.
     See pip_sort for documentation.
     """
@@ -189,6 +192,6 @@ def pip_sorted(a: Union[np.ndarray, List], key: Callable[[Any], float] = None, a
         axis = 0
     else:
         a_sorted = np.copy(a)
-    pip_sort(a_sorted, key=key, axis=axis, way=way,
+    pip_sort(a_sorted, axis=axis, order=order, way=way,
              kind=kind, use_threads=use_threads)
     return a_sorted
