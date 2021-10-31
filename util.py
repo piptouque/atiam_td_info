@@ -13,7 +13,7 @@ def log_error(expected: Any, answer: Any, fail: bool = True) -> None:
         raise AttributeError("Failed")
 
 
-def swap_el(a: np.ndarray, i: int, j: int) -> None:
+def swap_el(a: Union[np.ndarray, List], i: int, j: int) -> None:
     # see: https://stackoverflow.com/a/47951813
     a[[i, j]] = a[[j, i]]
 
@@ -92,19 +92,28 @@ def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, comp: C
     q.join()
 
 
-def pip_sort_list(seq: List, axis: int, order: Union[str, List[str]], way: Union['default', 'above', 'below'], kind: Union['quick'], use_threads: bool) -> None:
-    """In-place quick-sorting of input nD-array along axis.
+def pip_sort_list(seq: List, comp: Callable[[Any, Any], int], kind: Union['quicksort'], use_threads: bool) -> None:
+    """In-place quick-sorting of input 1D-list.
     Args:
-        array (np.ndarray): input nD-array to be sorted.
-        axis (int, optional): Defaults to -1 for last axis.
-        way (Union[, optional):
-            If 'default', will sort recursively as numpy does,
-            If 'below', will sort the (n-1-axis)D-sub-arrays.
-            If 'above', will sort the (axis)D-sub-arrays.
-            Defaults to 'default'.
-        use_threads(bool): Defaults to False.
+        seq (List): input 1D-list to be sorted.
+        use_threads(bool): Defaults to False. Not used.
     """
-    raise NotImplementedError()
+    l = []
+    # if np.ndim(seq) == 1:
+    #     l = pip_sorted(np.array(seq), axis=axis, order=comp,
+    #         way=way, kind=kind, use_threads=use_threads).tolist()
+    # elif np.ndim(seq) == 2:
+    # else:
+    #    raise NotImplementedError()
+    arr = pip_sort_array(np.array(seq), axis=-1, comp=comp,
+                         way='default', kind=kind, use_threads=use_threads)
+    seq.clear()
+    # stupid hack to copy new elements to same address, since this is an in-place version.
+    # todo: better.
+    while len(seq) > 0:
+        seq.pop()
+    for i in range(len(l)):
+        seq.append(l[i])
 
 
 def pip_sort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], way: Union['default', 'above', 'below'], kind: Union['quicksort'], use_threads: bool) -> None:
@@ -149,8 +158,6 @@ def pip_sort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str,
             Defaults to 'default'.
         use_threads(bool): Defaults to False.
     """
-    # set comp: increasing order
-
     def comp(a, b) -> int:
         if callable(order):
             return order(a, b)
@@ -161,7 +168,7 @@ def pip_sort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str,
                     return 1
                 elif comp < 0:
                     return -1
-                elif order >= len(order)-1:
+                elif i >= len(order)-1:
                     return 0
                 else:
                     return comp_rec(a, b, i+1)
@@ -171,13 +178,12 @@ def pip_sort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str,
 
     if axis == None:
         raise AttributeError(
-            "Use out-of-place version for sorting flattened version of the array")
+            "Use out-of-place version to sort a flattened version of the array.")
     if isinstance(a, np.ndarray):
         pip_sort_array(a, axis=axis, comp=comp,
                        way=way, kind=kind, use_threads=use_threads)
     elif isinstance(a, list):
-        pip_sort_list(a, axis=axis, comp=comp,
-                      way=way, kind=kind, use_threads=use_threads)
+        pip_sort_list(a, comp=comp, kind=kind, use_threads=use_threads)
     else:
         raise AttributeError(f"Type not recognised: {type(a)}")
 
