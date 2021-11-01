@@ -1,8 +1,9 @@
 
-from typing import Any, List, Union, Callable
+from typing import Any, List, Union, Callable, Dict, Tuple
 import numpy as np
 import queue
 import threading
+import pretty_midi as midi
 
 
 def log_error(expected: Any, answer: Any, fail: bool = True) -> None:
@@ -98,7 +99,7 @@ def pip_sort_list(seq: List, comp: Callable[[Any, Any], int], kind: Union['quick
         seq (List): input 1D-list to be sorted.
         use_threads(bool): Defaults to False. Not used.
     """
-    l = []
+    # l = []
     # if np.ndim(seq) == 1:
     #     l = pip_sorted(np.array(seq), axis=axis, order=comp,
     #         way=way, kind=kind, use_threads=use_threads).tolist()
@@ -107,13 +108,10 @@ def pip_sort_list(seq: List, comp: Callable[[Any, Any], int], kind: Union['quick
     #    raise NotImplementedError()
     arr = pip_sort_array(np.array(seq), axis=-1, comp=comp,
                          way='default', kind=kind, use_threads=use_threads)
-    seq.clear()
     # stupid hack to copy new elements to same address, since this is an in-place version.
     # todo: better.
-    while len(seq) > 0:
-        seq.pop()
-    for i in range(len(l)):
-        seq.append(l[i])
+    seq.clear()
+    seq.extend(arr)
 
 
 def pip_sort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], way: Union['default', 'above', 'below'], kind: Union['quicksort'], use_threads: bool) -> None:
@@ -201,3 +199,121 @@ def pip_sorted(a: Union[np.ndarray, List], axis: Union[int, None] = -1, order: U
     pip_sort(a_sorted, axis=axis, order=order, way=way,
              kind=kind, use_threads=use_threads)
     return a_sorted
+
+
+def get_instrument_notes(part: midi.PrettyMIDI) -> Dict[int, List[midi.Note]]:
+    """Get played notes by instruments (indexed by programme)
+
+    Args:
+        part (midi.PrettyMIDI):
+
+    Returns:
+        Dict[int, List[midi.Note]]: Dictionary of notes indexed by instrument programme.
+    """
+    return dict([(instr.program, instr.notes.copy()) for instr in part.instruments])
+
+
+def load_similarity_matrix(path: str, delimiter: str = ' ', comments: str = '#') -> Tuple[np.ndarray, np.ndarray]:
+    """[summary]
+
+    Args:
+        path (str): [description]
+        delimiter (str, optional): [description]. Defaults to ' '.
+        comments (str, optional): [description]. Defaults to '#'.
+
+    Returns:
+        np.ndarray: [description]
+    """
+    def loadtxt_skip(path: str, **kargs):
+        # The letters in the first row and first column should be the same.
+        # Apparently numpy.loadtxt includes comment lines in skiprows,
+        # so we need to skip those first.
+        # see: https://stackoverflow.com/a/17151323
+        with open(path) as f:
+            lines = (line for line in f if not line.startswith(comments))
+            return np.loadtxt(lines, **kargs)
+    # Load file a first time to get the letters
+    letters = loadtxt_skip(path, dtype=np.dtype('U1'), max_rows=1)
+    letters_2 = loadtxt_skip(path, dtype=np.dtype('U1'), skiprows=1, usecols=0)
+    if not np.array_equal(letters, letters_2):
+        raise AttributeError(
+            f"Letters are inconsistent: {letters}!={letters_2}")
+    cols = list(range(1, len(letters)+1))  #  skip first column
+    pam = loadtxt_skip(path, dtype=np.int8, skiprows=1, usecols=cols)
+    return letters, pam
+
+
+def get_path_matrices(s1: str, s2: str, sim: np.ndarray, gap_penalty: Union[Tuple[int, int], int]) -> Tuple[np.ndarray, np.ndarray]:
+    """Get the filled path matrices used in the Needleman-Wunsch algorithm
+
+    Args:
+        s1 (str): [description]
+        s2 (str): [description]
+        sim (np.ndarray): [description]
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: [description]
+    """
+    n, m = len(s1), len(s2)
+    path_mat = np.empty((n+1, m+1), dtype=np.int64)
+    grad_mat = np.full((n+1, m+1, 3, 2), fill_value=-1, dtype=np.int64)
+
+    # mat[:, 0] = -1
+    # mat[0, :] = -1
+    with np.nditer(path_mat, op_flags=['readwrite'], flags=['multi_index']) as it:
+        for x in it:
+            idx = it.multi_index
+            if idx[0] == 0 or idx[1] == 0:
+                dist = max(idx[0], idx[1])
+                # Fill the first column and row
+                x[...] = - dist * gap_penalty
+            else:
+                # tuple arithmetics
+                # see: https://stackoverflow.com/a/17418273
+                left_idx = tuple(np.subtract(idx, (1, 0)))
+                top_idx = tuple(np.subtract(idx, (0, 1)))
+                top_left_idx = tuple(np.subtract(idx, (1, 1)))
+                # indel
+                left_score = path_mat[left_idx] - gap_penalty
+                top_score = path_mat[top_idx] - gap_penalty
+                # match or mismatch, depends on similarity
+                top_left_score = path_mat[top_left_idx] + sim[idx]
+                max_score = np.amax([left_score, top_score, top_left_score])
+                if left_score == max_score:
+                    grad_mat[idx, 0] = left_idx
+                if top_score == max_score:
+                    grad_mat[idx, 1] = top_idx
+                if top_left_score == max_score:
+                    grad_mat[idx, 2] = top_left_idx
+                x[...] = max_score
+    path_mat = path_mat[1:, 1:]
+    grad_mat = grad_mat[1:, 1:]
+    return path_mat, grad_mat
+
+
+def compute_optimal_paths(path_mat: np.ndarray, grad_mat: np.ndarray) -> List[Tuple[str, str]]:
+    # start from the bottom right
+    idx = tuple(np.subtract(path_mat.shape, (1, 1))
+    path_l=[idx]
+    while idx
+    pass
+
+
+def pipman(s1: str, s2: str, sim: np.ndarray, gap_penality: int) -> np.ndarray:
+    """[summary]
+
+    Args:
+        s1 (str): [description]
+        s2 (str): [description]
+        sim (np.ndarray): [description]
+        gap_penality (int, optional): [description]. Defaults to -5.
+
+    Returns:
+        np.ndarray: [description]
+    """
+    score=0
+    ################
+    # YOUR CODE HERE
+    ################
+    mat=get_path_matrix(s1, s2, sim, gap_penalty)
+    return mat
