@@ -8,7 +8,10 @@ import pretty_midi as midi
 
 def swap_el(a: Union[np.ndarray, List], i: int, j: int) -> None:
     # see: https://stackoverflow.com/a/47951813
-    a[[i, j]] = a[[j, i]]
+    if isinstance(a, np.ndarray):
+        a[[i, j]] = a[[j, i]]
+    elif isinstance(a, list):
+        a[i], a[j] = a[j], a[i]
 
 
 def find_el(arr: np.ndarray, el: Any) -> Tuple:
@@ -99,19 +102,12 @@ def pipsort_list(seq: List, comp: Callable[[Any, Any], int], kind: Union['quicks
         seq (List): input 1D-list to be sorted.
         use_threads(bool): Defaults to False. Not used.
     """
-    # l = []
-    # if np.ndim(seq) == 1:
-    #     l = pipsorted(np.array(seq), axis=axis, order=comp,
-    #         way=way, kind=kind, use_threads=use_threads).tolist()
-    # elif np.ndim(seq) == 2:
-    # else:
-    #    raise NotImplementedError()
-    arr = pipsort_array(np.array(seq), axis=-1, comp=comp,
-                        way='default', kind=kind, use_threads=use_threads)
+    if kind == 'quicksort':
+        quicksort(seq, 0, len(seq)-1, comp=comp, use_threads=use_threads)
+    else:
+        raise AttributeError(f"Sorting method not supported: {kind}")
     # stupid hack to copy new elements to same address, since this is an in-place version.
     # todo: better.
-    seq.clear()
-    seq.extend(arr)
 
 
 def pipsort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], way: Union['default', 'above', 'below'], kind: Union['quicksort'], use_threads: bool) -> None:
@@ -128,19 +124,13 @@ def pipsort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], w
     """
     Ni = np.shape(arr)[:axis]
     Nk = np.shape(arr)[axis+1:]
-    if way == 'default':
-        np.apply_along_axis(lambda _a: quicksort(_a, 0, np.shape(
-            _a)[0]-1, comp=comp, use_threads=use_threads), axis=axis, arr=arr)
-    elif way == 'below':
-        for ii in np.ndindex(Ni):
-            quicksort(arr[ii + np.s_[:, ]], 0, np.shape(arr)[axis]-1,
-                      comp=comp, use_threads=use_threads)
-    elif way == 'above':
-        for kk in np.ndindex(Nk):
-            quicksort(arr[np.s_[:, ] + kk], 0, np.shape(arr)
-                      [axis]-1, comp=comp, use_threads=use_threads)
+    alg = None
+    if kind == 'quicksort':
+        alg = quicksort
     else:
-        raise AttributeError(f"Way not recognised: {way}")
+        raise AttributeError(f"Sorting method not supported: {kind}")
+    np.apply_along_axis(lambda _a: alg(_a, 0, np.shape(
+        _a)[0]-1, comp=comp, use_threads=use_threads), axis=axis, arr=arr)
 
 
 def pipsort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str, List[str], Callable[[Any, Any], int]] = None,  way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> None:
@@ -195,7 +185,7 @@ def pipsorted(a: Union[np.ndarray, List], axis: Union[int, None] = -1, order: Un
         a_sorted = np.flatten(arr)
         axis = 0
     else:
-        a_sorted = np.copy(a)
+        a_sorted = a.copy()
     pipsort(a_sorted, axis=axis, order=order, way=way,
             kind=kind, use_threads=use_threads)
     return a_sorted
@@ -240,7 +230,7 @@ def load_similarity_matrix(path: str, delimiter: str = ' ', comments: str = '#')
             f"Letters are inconsistent: {letters}!={letters_2}")
     cols = list(range(1, len(letters)+1))  #  skip first column
     sim_mat = loadtxt_skip(path, dtype=np.int64, skiprows=1, usecols=cols)
-    return letters, sim_mat
+    return sim_mat, letters
 
 
 def get_directions(dim: int) -> List[Tuple]:
@@ -295,6 +285,9 @@ def get_path_matrices(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarr
         # as can be seen in the definition of path_mat and grad_mat
         l_1, l_2 = s_1[idx_s[0]-1], s_2[idx_s[1]-1]
         idx_l = find_el(letters, l_1), find_el(letters, l_2)
+        if not np.all(np.array(idx_l) != None):
+            raise AttributeError(
+                f"Letter similarity not found: '{l_1}' and '{l_2}'")
         return sim_mat[idx_l]
 
     with np.nditer(path_mat, op_flags=['readwrite'], flags=['multi_index']) as it:
@@ -325,7 +318,7 @@ def get_path_matrices(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarr
     return path_mat, grad_mat
 
 
-def get_aligned_strings(s_1: str, s_2: str, path_mat: np.ndarray, grad_mat: np.ndarray, gap_symbol: str = '-') -> Tuple[List[Tuple[str, str]], int]:
+def get_aligned_strings(s_1: str, s_2: str, path_mat: np.ndarray, grad_mat: np.ndarray, gap_symbol: str = '-') -> Dict[List[Tuple[str, str]], int]:
     # start from the bottom right
     last_idx = tuple(np.subtract(path_mat.shape, (1, 1)))
     #
@@ -334,7 +327,7 @@ def get_aligned_strings(s_1: str, s_2: str, path_mat: np.ndarray, grad_mat: np.n
     path_list = [[last_idx, '', '']]
     paths_done = []
     #
-    dirs = get_dirs(path_mat.ndim)
+    dirs = get_directions(path_mat.ndim)
 
     def get_next_letters(next_idx: Tuple[int, int]):
         # indices are offset by (1, 1)
@@ -372,10 +365,10 @@ def get_aligned_strings(s_1: str, s_2: str, path_mat: np.ndarray, grad_mat: np.n
     # now we can return the paths in reverse order
     # they will give us the actual aligned strings.
     aligned_strings = [(path[1][::-1], path[2][::-1]) for path in paths_done]
-    return aligned_strings, score
+    return dict({'string_list': aligned_strings, 'score': score})
 
 
-def pipman(s_1: str, s_2: str, sim_mat: np.ndarray, gap_penality: int) -> np.ndarray:
+def pipman(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarray, gap_penality: int) -> Tuple[List[Tuple[str, str]], int]:
     """[summary]
 
     Args:
@@ -387,9 +380,7 @@ def pipman(s_1: str, s_2: str, sim_mat: np.ndarray, gap_penality: int) -> np.nda
     Returns:
         np.ndarray: [description]
     """
-    score = 0
-    ################
-    # YOUR CODE HERE
-    ################
-    mat = get_path_matrix(s_1, s_2, sim_mat, gap_penalty)
-    return mat
+    path_mat, grad_mat = get_path_matrices(
+        s_1, s_2, sim_mat, letters, gap_penalty=gap_penality)
+    aligned = get_aligned_strings(s_1, s_2, path_mat, grad_mat)
+    return aligned
