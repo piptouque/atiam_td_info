@@ -6,17 +6,17 @@ import threading
 import pretty_midi as midi
 
 
-def log_error(expected: Any, answer: Any, fail: bool = True) -> None:
-    print("-- ERROR --")
-    print(f"expected:  {expected}")
-    print(f"got:       {answer}")
-    if fail:
-        raise AttributeError("Failed")
-
-
 def swap_el(a: Union[np.ndarray, List], i: int, j: int) -> None:
     # see: https://stackoverflow.com/a/47951813
     a[[i, j]] = a[[j, i]]
+
+
+def find_el(arr: np.ndarray, el: Any) -> Tuple:
+    # see: https://stackoverflow.com/a/41732691
+    for idx, val in np.ndenumerate(arr):
+        if val == el:
+            return idx if arr.ndim > 1 else idx[0]
+    return None
 
 
 def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, comp: Callable[[Any, Any], int], use_threads: bool = False) -> None:
@@ -93,7 +93,7 @@ def quicksort(a: Union[np.ndarray, List], start_idx: int, stop_idx: int, comp: C
     q.join()
 
 
-def pip_sort_list(seq: List, comp: Callable[[Any, Any], int], kind: Union['quicksort'], use_threads: bool) -> None:
+def pipsort_list(seq: List, comp: Callable[[Any, Any], int], kind: Union['quicksort'], use_threads: bool) -> None:
     """In-place quick-sorting of input 1D-list.
     Args:
         seq (List): input 1D-list to be sorted.
@@ -101,20 +101,20 @@ def pip_sort_list(seq: List, comp: Callable[[Any, Any], int], kind: Union['quick
     """
     # l = []
     # if np.ndim(seq) == 1:
-    #     l = pip_sorted(np.array(seq), axis=axis, order=comp,
+    #     l = pipsorted(np.array(seq), axis=axis, order=comp,
     #         way=way, kind=kind, use_threads=use_threads).tolist()
     # elif np.ndim(seq) == 2:
     # else:
     #    raise NotImplementedError()
-    arr = pip_sort_array(np.array(seq), axis=-1, comp=comp,
-                         way='default', kind=kind, use_threads=use_threads)
+    arr = pipsort_array(np.array(seq), axis=-1, comp=comp,
+                        way='default', kind=kind, use_threads=use_threads)
     # stupid hack to copy new elements to same address, since this is an in-place version.
     # todo: better.
     seq.clear()
     seq.extend(arr)
 
 
-def pip_sort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], way: Union['default', 'above', 'below'], kind: Union['quicksort'], use_threads: bool) -> None:
+def pipsort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], way: Union['default', 'above', 'below'], kind: Union['quicksort'], use_threads: bool) -> None:
     """In-place quick-sorting of input nD-array along axis.
     Args:
         array (np.ndarray): input nD-array to be sorted.
@@ -143,7 +143,7 @@ def pip_sort_array(arr: np.ndarray, axis: int, comp: Callable[[Any, Any], int], 
         raise AttributeError(f"Way not recognised: {way}")
 
 
-def pip_sort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str, List[str], Callable[[Any, Any], int]] = None,  way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> None:
+def pipsort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str, List[str], Callable[[Any, Any], int]] = None,  way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> None:
     """In-place quick-sorting of input nD-array, according to input comparison function.
     Args:
         array (np.ndarray): input nD-array to be sorted.
@@ -178,17 +178,17 @@ def pip_sort(a: Union[np.ndarray, List], axis: int = -1, order: Union[None, str,
         raise AttributeError(
             "Use out-of-place version to sort a flattened version of the array.")
     if isinstance(a, np.ndarray):
-        pip_sort_array(a, axis=axis, comp=comp,
-                       way=way, kind=kind, use_threads=use_threads)
+        pipsort_array(a, axis=axis, comp=comp,
+                      way=way, kind=kind, use_threads=use_threads)
     elif isinstance(a, list):
-        pip_sort_list(a, comp=comp, kind=kind, use_threads=use_threads)
+        pipsort_list(a, comp=comp, kind=kind, use_threads=use_threads)
     else:
         raise AttributeError(f"Type not recognised: {type(a)}")
 
 
-def pip_sorted(a: Union[np.ndarray, List], axis: Union[int, None] = -1, order: Union[None, str, List[str], Callable[[Any, Any], int]] = None, way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> np.ndarray:
+def pipsorted(a: Union[np.ndarray, List], axis: Union[int, None] = -1, order: Union[None, str, List[str], Callable[[Any, Any], int]] = None, way: Union['default', 'above', 'below'] = 'default', kind: Union['quicksort'] = 'quicksort', use_threads: bool = False) -> np.ndarray:
     """Out-of-place quick-sorting of nD-array, according to input predicate.
-    See pip_sort for documentation.
+    See pipsort for documentation.
     """
     a_sorted = None
     if axis is None:
@@ -196,8 +196,8 @@ def pip_sorted(a: Union[np.ndarray, List], axis: Union[int, None] = -1, order: U
         axis = 0
     else:
         a_sorted = np.copy(a)
-    pip_sort(a_sorted, axis=axis, order=order, way=way,
-             kind=kind, use_threads=use_threads)
+    pipsort(a_sorted, axis=axis, order=order, way=way,
+            kind=kind, use_threads=use_threads)
     return a_sorted
 
 
@@ -233,87 +233,163 @@ def load_similarity_matrix(path: str, delimiter: str = ' ', comments: str = '#')
             lines = (line for line in f if not line.startswith(comments))
             return np.loadtxt(lines, **kargs)
     # Load file a first time to get the letters
-    letters = loadtxt_skip(path, dtype=np.dtype('U1'), max_rows=1)
-    letters_2 = loadtxt_skip(path, dtype=np.dtype('U1'), skiprows=1, usecols=0)
+    letters = loadtxt_skip(path, dtype=str, max_rows=1)
+    letters_2 = loadtxt_skip(path, dtype=str, skiprows=1, usecols=0)
     if not np.array_equal(letters, letters_2):
         raise AttributeError(
             f"Letters are inconsistent: {letters}!={letters_2}")
     cols = list(range(1, len(letters)+1))  #  skip first column
-    pam = loadtxt_skip(path, dtype=np.int8, skiprows=1, usecols=cols)
-    return letters, pam
+    sim_mat = loadtxt_skip(path, dtype=np.int64, skiprows=1, usecols=cols)
+    return letters, sim_mat
 
 
-def get_path_matrices(s1: str, s2: str, sim: np.ndarray, gap_penalty: Union[Tuple[int, int], int]) -> Tuple[np.ndarray, np.ndarray]:
+def get_directions(dim: int) -> List[Tuple]:
+    """Get (sorted) list of vectors of 'strictly positive' directions.
+
+    Args:
+        dim (int): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    # Binary representation to string to tuple.
+    # see: https://stackoverflow.com/a/21732313
+    return [tuple([int(c) for c in format(i, 'b').zfill(dim)]) for i in range(1, 2 ** dim)]
+
+
+def get_path_matrices(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarray, gap_penalty: Union[Tuple[int, int], int]) -> Tuple[np.ndarray, np.ndarray]:
     """Get the filled path matrices used in the Needleman-Wunsch algorithm
 
     Args:
-        s1 (str): [description]
-        s2 (str): [description]
-        sim (np.ndarray): [description]
+        s_1 (str): [description]
+        s_2 (str): [description]
+        sim_mat (np.ndarray): [description]
 
     Returns:
         Tuple[np.ndarray, np.ndarray]: [description]
     """
-    n, m = len(s1), len(s2)
+    n, m = len(s_1), len(s_2)
     path_mat = np.empty((n+1, m+1), dtype=np.int64)
-    grad_mat = np.full((n+1, m+1, 3, 2), fill_value=-1, dtype=np.int64)
+    grad_mat = np.empty((n+1, m+1), dtype=np.dtype('U3'))
 
-    # mat[:, 0] = -1
-    # mat[0, :] = -1
+    # first we have to fill the first line and column
+    # for both path and gradient matrices!
+    path_mat[:, 0] = np.arange(path_mat.shape[0]) * gap_penalty
+    path_mat[0, :] = np.arange(path_mat.shape[1]) * gap_penalty
+    grad_mat[:, 0] = np.full_like(grad_mat[:, 0], fill_value='010')
+    grad_mat[0, :] = np.full_like(grad_mat[0, :], fill_value='100')
+
+    def scores_to_grad(left_score, top_score, top_left_score) -> Tuple[int, str]:
+        score_list = [left_score, top_score, top_left_score]
+        grad = ''
+        max_score = np.amax(score_list)
+        for (i, score) in enumerate(score_list):
+            grad = grad + str(int(score == max_score))
+        return max_score, grad
+
+    grad_mat[0, 0] = 0
+    dirs = get_directions(path_mat.ndim)
+
+    def index_to_similarity(idx_s: Tuple[int, int]):
+        # warning: the indices are shifted (1, 1),
+        # as can be seen in the definition of path_mat and grad_mat
+        l_1, l_2 = s_1[idx_s[0]-1], s_2[idx_s[1]-1]
+        idx_l = find_el(letters, l_1), find_el(letters, l_2)
+        return sim_mat[idx_l]
+
     with np.nditer(path_mat, op_flags=['readwrite'], flags=['multi_index']) as it:
         for x in it:
             idx = it.multi_index
-            if idx[0] == 0 or idx[1] == 0:
-                dist = max(idx[0], idx[1])
-                # Fill the first column and row
-                x[...] = - dist * gap_penalty
-            else:
-                # tuple arithmetics
+            if np.all(np.array(idx) != 0):
+                # tuple arithmetic
                 # see: https://stackoverflow.com/a/17418273
-                left_idx = tuple(np.subtract(idx, (1, 0)))
-                top_idx = tuple(np.subtract(idx, (0, 1)))
-                top_left_idx = tuple(np.subtract(idx, (1, 1)))
+                left_idx = tuple(np.subtract(idx, dirs[0]))
+                top_idx = tuple(np.subtract(idx, dirs[1]))
+                top_left_idx = tuple(np.subtract(idx, dirs[2]))
                 # indel
-                left_score = path_mat[left_idx] - gap_penalty
-                top_score = path_mat[top_idx] - gap_penalty
+                left_score = path_mat[left_idx] + gap_penalty
+                top_score = path_mat[top_idx] + gap_penalty
                 # match or mismatch, depends on similarity
-                top_left_score = path_mat[top_left_idx] + sim[idx]
-                max_score = np.amax([left_score, top_score, top_left_score])
-                if left_score == max_score:
-                    grad_mat[idx, 0] = left_idx
-                if top_score == max_score:
-                    grad_mat[idx, 1] = top_idx
-                if top_left_score == max_score:
-                    grad_mat[idx, 2] = top_left_idx
+                top_left_score = path_mat[top_left_idx] + \
+                    index_to_similarity(idx)
+                # signal whether each direction is optimal
+                # by '1', else '0'
+                # ex: '100', '101'
+                max_score, grad_mat[idx] = scores_to_grad(
+                    left_score, top_score, top_left_score)
                 x[...] = max_score
-    path_mat = path_mat[1:, 1:]
-    grad_mat = grad_mat[1:, 1:]
+                # print( f"Ids  {idx} -- l={left_idx},   t={top_idx},   tl={top_left_idx}")
+                # print( f"Vals {index_to_similarity(idx)} -- l={left_score}, t={top_score}, tl={top_left_score}")
+    # path_mat = path_mat[1:, 1:]
+    # grad_mat = grad_mat[1:, 1:]
     return path_mat, grad_mat
 
 
-def compute_optimal_paths(path_mat: np.ndarray, grad_mat: np.ndarray) -> List[Tuple[str, str]]:
+def get_aligned_strings(s_1: str, s_2: str, path_mat: np.ndarray, grad_mat: np.ndarray, gap_symbol: str = '-') -> Tuple[List[Tuple[str, str]], int]:
     # start from the bottom right
-    idx = tuple(np.subtract(path_mat.shape, (1, 1))
-    path_l=[idx]
-    while idx
-    pass
+    last_idx = tuple(np.subtract(path_mat.shape, (1, 1)))
+    #
+    score = path_mat[last_idx]
+    #
+    path_list = [[last_idx, '', '']]
+    paths_done = []
+    #
+    dirs = get_dirs(path_mat.ndim)
+
+    def get_next_letters(next_idx: Tuple[int, int]):
+        # indices are offset by (1, 1)
+        # since grad and path are (n+1, m+1)
+        idx = tuple(np.subtract(next_idx, dirs[2]))
+        if i == 0:
+            return [gap_symbol, s_2[idx[1]]]
+        elif i == 1:
+            return [s_1[idx[0]], gap_symbol]
+        else:
+            return [s_1[idx[0]], s_2[idx[1]]]
+    while not len(path_list) == 0:
+        path = path_list.pop()
+        idx = path[0]
+        if np.all(np.array(idx) == 0):
+            # done!
+            paths_done.append(path)
+        else:
+            grad = grad_mat[idx]
+            # check for one or more optimal steps
+            have_optimal_steps = np.array(
+                [bool(int(g)) for g in grad], dtype=bool)
+            assert(np.any(have_optimal_steps))
+            nb_paths = np.count_nonzero(have_optimal_steps)
+            next_ids = [tuple(np.subtract(idx, d)) for d in dirs]
+            for i in range(len(dirs)):
+                # first option is continued by this path
+                next_idx = next_ids[i]
+                if have_optimal_steps[i] and np.all(np.array(next_idx) >= 0):
+                    next_letters = get_next_letters(idx)
+
+                    next_step = [next_idx, path[1] +
+                                 next_letters[0], path[2] + next_letters[1]]
+                    path_list.append(next_step)
+    # now we can return the paths in reverse order
+    # they will give us the actual aligned strings.
+    aligned_strings = [(path[1][::-1], path[2][::-1]) for path in paths_done]
+    return aligned_strings, score
 
 
-def pipman(s1: str, s2: str, sim: np.ndarray, gap_penality: int) -> np.ndarray:
+def pipman(s_1: str, s_2: str, sim_mat: np.ndarray, gap_penality: int) -> np.ndarray:
     """[summary]
 
     Args:
-        s1 (str): [description]
-        s2 (str): [description]
-        sim (np.ndarray): [description]
+        s_1 (str): [description]
+        s_2 (str): [description]
+        sim_mat (np.ndarray): [description]
         gap_penality (int, optional): [description]. Defaults to -5.
 
     Returns:
         np.ndarray: [description]
     """
-    score=0
+    score = 0
     ################
     # YOUR CODE HERE
     ################
-    mat=get_path_matrix(s1, s2, sim, gap_penalty)
+    mat = get_path_matrix(s_1, s_2, sim_mat, gap_penalty)
     return mat
