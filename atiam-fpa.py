@@ -78,7 +78,7 @@ Q-2.2 Apply the NW algorithm between all tracks of each composer
 
 Q-2.3 Extend your previous code so that it can compare
     * A given track to all tracks of all composers (full database)
-    * You should see that the time taken is untractable (computational explosion)
+    * You should see that the time taken is intractable (computational explosion)
     * Propose a method to avoid such a huge amount of computation
     * Establish a cut criterion (what is relevant similarity)
     * Propose a set of matching tracks and save it through Pickle
