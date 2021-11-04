@@ -430,37 +430,37 @@ def get_aligned_strings(s_1: str, s_2: str, path_mat: np.ndarray, grad_mat: np.n
     return dict({'string_list': aligned_strings, 'score': score})
 
 
-def pipman(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarray, gap_penality: int) -> Tuple[List[Tuple[str, str]], int]:
+def pipman(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarray, gap_penalty: int) -> Tuple[List[Tuple[str, str]], int]:
     """[summary]
 
     Args:
         s_1 (str): [description]
         s_2 (str): [description]
         sim_mat (np.ndarray): [description]
-        gap_penality (int, optional): [description]. Defaults to -5.
+        gap_penalty (int, optional): [description]. Defaults to -5.
 
     Returns:
         np.ndarray: [description]
     """
     path_mat, grad_mat = get_path_matrices(
-        s_1, s_2, sim_mat, letters, gap_penalty=gap_penality)
+        s_1, s_2, sim_mat, letters, gap_penalty=gap_penalty)
     aligned = get_aligned_strings(s_1, s_2, path_mat, grad_mat)
     return aligned
 
 
-def pipman_affine(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarray, gap_penality: Union[Tuple[int, int], int]) -> Tuple[List[Tuple[str, str]], int]:
+def pipman_affine(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarray, gap_penalty: Union[Tuple[int, int], int]) -> Tuple[List[Tuple[str, str]], int]:
     """[summary]
 
     Args:
         s_1 (str): [description]
         s_2 (str): [description]
         sim_mat (np.ndarray): [description]
-        gap_penality (int, optional): [description]. Defaults to -5.
+        gap_penalty (int, optional): [description]. Defaults to -5.
 
     Returns:
         np.ndarray: [description]
     """
     path_mat, grad_mat = get_path_matrices_affine(
-        s_1, s_2, sim_mat, letters, gap_penalty=gap_penality)
+        s_1, s_2, sim_mat, letters, gap_penalty=gap_penalty)
     aligned = get_aligned_strings(s_1, s_2, path_mat, grad_mat)
     return aligned
