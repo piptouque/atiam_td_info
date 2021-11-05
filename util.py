@@ -7,6 +7,7 @@ import pretty_midi as midi
 import copy
 import random
 import string
+import re
 
 
 def swap_el(a: Union[np.ndarray, List], i: int, j: int) -> None:
@@ -464,3 +465,82 @@ def pipman_affine(s_1: str, s_2: str, sim_mat: np.ndarray, letters: np.ndarray, 
         s_1, s_2, sim_mat, letters, gap_penalty=gap_penalty)
     aligned = get_aligned_strings(s_1, s_2, path_mat, grad_mat)
     return aligned
+
+
+def format_title(name: str) -> str:
+    # we only care about letters, we remove spaces, numbers and special characters.
+    return re.compile("[^a-zA-Z]").sub('', name).casefold().upper()
+
+
+def get_preprocessed_track(composer: str, title: str, composers: List[str]) -> Dict:
+    def find_composers(title: str, composers: List[str], patterns: List[re.Pattern]) -> Union[None, str]:
+        m_composer_list = [re.search(p, title) for p in patterns]
+        other_composer_list = []
+        for m_composer in m_composer_list:
+            if m_composer is not None:
+                g_composer = m_composer.groupdict()
+                other_composer = f"{g_composer['last']}, {g_composer['first']}"
+                # check if this is indeed the name of a known composer
+                if other_composer in composers:
+                    other_composer_list.append(other_composer)
+        return other_composer_list
+
+    def strip_matches(s: str, patterns: List[re.Pattern]) -> str:
+        res = s
+        for p in patterns:
+            res = p.sub('', res)
+        return res
+    track = dict()
+    #  KEY
+    p_keys = re.compile(
+        r'(in )?(?P<name>([A-G][\#|b]?))( ?(?P<rel>(major|minor)))', re.IGNORECASE)
+    m_keys = re.search(p_keys, title)
+    if m_keys is not None:
+        track['key'] = m_keys.groupdict()
+    else:
+        track['key'] = None
+    #  ADDITIONAL COMPOSER
+    # first check stuff in parenthesis
+    # see: https://docs.python.org/3/howto/regex.html
+    p_composer_1 = re.compile(r'(\((?P<last>\w+), (?P<first>\w+)\))')
+    p_composer_2 = re.compile(r'by (?P<first>\w+) (?P<last>\w+)')
+    other_composer_list = find_composers(
+        title, composers, [p_composer_1, p_composer_2])
+    other_composer_list.append(composer)
+    track['composers'] = other_composer_list
+    #  OPUS NUMBER
+    p_opus = re.compile(
+        r'(?P<type>(Op\.?|opus|H|K|HVW)) ?(?P<number>\d+)', re.IGNORECASE)
+    m_opus = re.search(p_opus, title)
+    if m_opus is not None:
+        g_opus = m_opus.groupdict()
+        track['opus'] = g_opus
+    else:
+        track['opus'] = None
+    #  COUNT
+    p_count = re.compile(
+        r'(?P<type>(No\.?|Nb|n\°?)) ?(?P<number>\d+)(( ?(of|\/)? ?)(?P<total>\d+))?', re.IGNORECASE)
+    m_count = re.search(p_count, title)
+    if m_count is not None:
+        track['count'] = m_count.groupdict()
+    else:
+        track['count'] = None
+    # MOUVEMENT
+    p_movement = re.compile(
+        r'((?P<number>\d+)(st|rst|nd|rd|th)) ?(Movement|mvt?)((: ?)?(?P<name>\w+))?', re.IGNORECASE)
+    m_movement = re.search(p_movement, title)
+    if m_movement is not None:
+        g_movement = m_movement.groupdict()
+        track['movement'] = {'number': g_movement['number'],
+                             'name': format_title(g_movement['name'])}
+    else:
+        track['movement'] = None
+    # ACTUAL TITLE
+    # remove all previous matched patterns
+    # also remove anything else in parenthesis
+    # see: https://stackoverflow.com/a/640016
+    p_parenth = re.compile(r'\([^)]*\)')
+    stripped = strip_matches(title, [p_keys, p_composer_1, p_composer_2,
+                             p_opus, p_count, p_movement, p_parenth]).strip(' ,').casefold()
+    track['title'] = format_title(stripped)
+    return track
